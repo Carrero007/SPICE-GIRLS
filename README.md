@@ -262,11 +262,6 @@ const MIN_MS = 2000; // milissegundos
 
 ---
 
-## 📄 Licença
-
-Distribuído sob a licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para mais informações.
-
----
 
 <div align="center">
 
