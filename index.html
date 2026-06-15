@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LogiTrack — Dashboard de Monitoramento Logístico</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="#" id="dummy-link" />
+
+  <style>
+    /* ── RESET ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── TOKENS ── */
+    :root {
+      --radius: 0.5rem;
+      --background: #0d0f14;
+      --surface:    #13161d;
+      --card:       #181c25;
+      --card-hover: #1d2230;
+      --border:     #252a38;
+      --border-hi:  #303752;
+
+      --primary:    #5b8dee;
+      --primary-10: rgba(91,141,238,.10);
+      --primary-20: rgba(91,141,238,.20);
+
+      --accent:     #38c9a3;
+      --accent-10:  rgba(56,201,163,.10);
+
+      --warning:    #f0b429;
+      --warning-10: rgba(240,180,41,.10);
+      --warning-20: rgba(240,180,41,.20);
+
+      --danger:     #e05c5c;
+      --danger-10:  rgba(224,92,92,.10);
+      --danger-20:  rgba(224,92,92,.20);
+
+      --success:    #38c9a3;
+      --success-10: rgba(56,201,163,.10);
+
+      --fg:         #e8ecf4;
+      --fg-muted:   #6b7494;
+      --fg-subtle:  #434966;
+
+      --font-sans:  'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+    }
+
+    /* ── BASE ── */
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--background);
+      color: var(--fg);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ══════════════════════════════
+       LOADER
+    ══════════════════════════════ */
+    #loader-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: var(--background);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      transition: opacity .4s ease, visibility .4s ease;
+    }
+    #loader-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .loader-label {
+      font-size: 0.75rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      font-weight: 500;
+    }
+    .loader-label span {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    /* caminhão */
+    .loader { width: fit-content; height: fit-content; display: flex; align-items: center; justify-content: center; }
+    .truckWrapper { width: 200px; height: 100px; display: flex; flex-direction: column; position: relative; align-items: center; justify-content: flex-end; overflow-x: hidden; }
+    .truckBody { width: 130px; height: fit-content; margin-bottom: 6px; animation: truckMotion 1s linear infinite; }
+    @keyframes truckMotion { 0%,100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+    .truckTires { width: 130px; height: fit-content; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; position: absolute; bottom: 0; }
+    .truckTires svg { width: 24px; }
+    .road { width: 100%; height: 1.5px; background: #5b8dee; position: relative; bottom: 0; align-self: flex-end; border-radius: 3px; }
+    .road::before { content: ""; position: absolute; width: 20px; height: 100%; background: #5b8dee; right: -50%; border-radius: 3px; animation: roadAnim 1.4s linear infinite; border-left: 10px solid var(--background); }
+    .road::after  { content: ""; position: absolute; width: 10px; height: 100%; background: #5b8dee; right: -65%; border-radius: 3px; animation: roadAnim 1.4s linear infinite; border-left: 4px solid var(--background); }
+    .lampPost { position: absolute; bottom: 0; right: -90%; height: 90px; animation: roadAnim 1.4s linear infinite; fill: var(--fg-subtle); }
+    @keyframes roadAnim { 0% { transform: translateX(0); } 100% { transform: translateX(-350px); } }
+
+    /* ══════════════════════════════
+       LAYOUT
+    ══════════════════════════════ */
+    #app { opacity: 0; transition: opacity .5s ease; }
+    #app.visible { opacity: 1; }
+
+    /* ── HEADER ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13,15,20,.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .header-inner {
+      max-width: 1340px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .logo-wrap { display: flex; align-items: center; gap: 0.875rem; }
+    .logo-icon {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 0.625rem;
+      background: var(--primary-10);
+      border: 1px solid var(--primary-20);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-icon svg { width: 1.125rem; height: 1.125rem; color: var(--primary); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .logo-text h1 { font-size: 1rem; font-weight: 700; letter-spacing: -.025em; color: var(--fg); }
+    .logo-text p  { font-size: 0.6875rem; color: var(--fg-muted); letter-spacing: .01em; }
+
+    .header-right { display: flex; align-items: center; gap: 1.25rem; }
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+      color: var(--fg-muted);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 2rem;
+      padding: 0.3125rem 0.75rem;
+    }
+    .pulse-dot {
+      width: 0.4375rem;
+      height: 0.4375rem;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 0 rgba(56,201,163,.5);
+      animation: livePulse 2s infinite;
+    }
+    @keyframes livePulse {
+      0%   { box-shadow: 0 0 0 0 rgba(56,201,163,.5); }
+      70%  { box-shadow: 0 0 0 6px rgba(56,201,163,0); }
+      100% { box-shadow: 0 0 0 0 rgba(56,201,163,0); }
+    }
+    .header-timestamp { font-size: 0.6875rem; color: var(--fg-subtle); font-family: var(--font-mono); }
+    @media (max-width: 640px) { .live-badge, .header-timestamp { display: none; } }
+
+    /* ── MAIN ── */
+    main {
+      max-width: 1340px;
+      margin: 0 auto;
+      padding: 1.75rem 1.5rem 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── SECTION LABEL ── */
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--fg-subtle);
+      margin-bottom: 0.625rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── CARD ── */
+    .card {
+      border-radius: calc(var(--radius) + 6px);
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 1.25rem;
+      transition: border-color .2s;
+    }
+    .card:hover { border-color: var(--border-hi); }
+    .card-header { margin-bottom: 1.125rem; display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+    .card-header h2 { font-size: 0.8125rem; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
+    .card-header p  { font-size: 0.6875rem; color: var(--fg-muted); margin-top: 0.1875rem; }
+    .card-icon { width: 1.75rem; height: 1.75rem; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .card-icon svg { width: 0.875rem; height: 0.875rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .card-icon.accent   { background: var(--accent-10);   color: var(--accent);   border: 1px solid rgba(56,201,163,.2); }
+    .card-icon.danger   { background: var(--danger-10);   color: var(--danger);   border: 1px solid rgba(224,92,92,.2);  }
+
+    /* ── FILTERS ── */
+    .filters-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 1rem;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 0.3125rem; }
+    .filter-group label { font-size: 0.6875rem; color: var(--fg-muted); font-weight: 500; letter-spacing: .03em; text-transform: uppercase; }
+    select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.4375rem 0.875rem;
+      font-size: 0.8125rem;
+      color: var(--fg);
+      min-width: 164px;
+      cursor: pointer;
+      outline: none;
+      font-family: var(--font-sans);
+      transition: border-color .15s, box-shadow .15s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7494' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 2rem;
+    }
+    select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-10); }
+
+    .toggle-group { display: flex; gap: 0.1875rem; border-radius: calc(var(--radius) + 2px); background: var(--surface); border: 1px solid var(--border); padding: 0.1875rem; }
+    .toggle-btn {
+      padding: 0.375rem 0.875rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      border-radius: calc(var(--radius) - 1px);
+      border: none;
+      cursor: pointer;
+      background: transparent;
+      color: var(--fg-muted);
+      transition: all .15s;
+      font-family: var(--font-sans);
+      letter-spacing: .01em;
+    }
+    .toggle-btn.active { background: var(--primary); color: #fff; box-shadow: 0 2px 8px rgba(91,141,238,.35); }
+    .toggle-btn:not(.active):hover { color: var(--fg); background: rgba(255,255,255,.04); }
+
+    .filter-divider { width: 1px; height: 2rem; background: var(--border); align-self: flex-end; margin: 0 0.25rem; }
+    .clear-btn {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.375rem 0.75rem;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: border-color .15s, color .15s;
+    }
+    .clear-btn:hover { color: var(--fg); border-color: var(--border-hi); }
+
+    /* ── KPIs ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 1rem; }
+    @media (min-width: 1024px) { .kpi-grid { grid-template-columns: repeat(4,1fr); } }
+
+    .kpi-card {
+      border-radius: calc(var(--radius) + 6px);
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 1.25rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s, transform .2s;
+    }
+    .kpi-card:hover { border-color: var(--border-hi); transform: translateY(-1px); }
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--kpi-accent, var(--primary));
+      opacity: .6;
+      border-radius: 9999px 9999px 0 0;
+    }
+    .kpi-card.kpi-warn  { --kpi-accent: var(--warning); }
+    .kpi-card.kpi-danger { --kpi-accent: var(--danger); }
+
+    .kpi-top { display: flex; align-items: center; justify-content: space-between; }
+    .kpi-label { font-size: 0.6875rem; color: var(--fg-muted); font-weight: 500; letter-spacing: .02em; }
+    .kpi-icon {
+      width: 2rem; height: 2rem;
+      border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .kpi-icon svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .kpi-icon.primary { background: var(--primary-10); color: var(--primary); border: 1px solid var(--primary-20); }
+    .kpi-icon.warning { background: var(--warning-10); color: var(--warning); border: 1px solid var(--warning-20); }
+    .kpi-icon.danger  { background: var(--danger-10);  color: var(--danger);  border: 1px solid var(--danger-20);  }
+
+    .kpi-value {
+      margin-top: 1rem;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -.05em;
+      font-variant-numeric: tabular-nums;
+      font-family: var(--font-sans);
+      line-height: 1;
+    }
+    .kpi-hint { margin-top: 0.375rem; font-size: 0.6875rem; color: var(--fg-muted); }
+    .kpi-delta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      margin-top: 0.375rem;
+    }
+    .kpi-delta.up   { color: var(--danger); }
+    .kpi-delta.down { color: var(--success); }
+
+    /* ── CHARTS ── */
+    .charts-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 1024px) { .charts-grid { grid-template-columns: 3fr 2fr; } }
+    .chart-wrap { height: 17rem; position: relative; }
+
+    /* ── TWO-COL ── */
+    .two-col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 1024px) { .two-col { grid-template-columns: 1fr 1fr; } }
+
+    /* ── TABLE ── */
+    .table-wrap { overflow: auto; border-radius: var(--radius); border: 1px solid var(--border); margin-top: 0.125rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    thead { background: rgba(255,255,255,.02); }
+    th {
+      text-align: left;
+      padding: 0.5625rem 1rem;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--fg-subtle);
+      font-weight: 600;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    th.right { text-align: right; }
+    td { padding: 0.625rem 1rem; border-bottom: 1px solid rgba(255,255,255,.03); }
+    td.right { text-align: right; font-variant-numeric: tabular-nums; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background .1s; }
+    tbody tr:hover { background: rgba(255,255,255,.025); }
+    .mono  { font-family: var(--font-mono); font-size: 0.75rem; color: var(--fg-muted); }
+    .bold  { font-weight: 600; }
+    .text-danger  { color: var(--danger); }
+    .text-success { color: var(--success); }
+    .text-warning { color: var(--warning); }
+    .empty-row td { text-align: center; color: var(--fg-muted); padding: 2rem; font-size: 0.8125rem; }
+
+    /* ── BADGE ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: 0.1875rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+    .badge-ok      { background: var(--success-10); color: var(--success); border-color: rgba(56,201,163,.25); }
+    .badge-leve    { background: var(--warning-10); color: var(--warning); border-color: rgba(240,180,41,.25); }
+    .badge-alto    { background: rgba(224,138,92,.1); color: #e08a5c; border-color: rgba(224,138,92,.25); }
+    .badge-critico { background: var(--danger-10); color: var(--danger); border-color: rgba(224,92,92,.25); }
+
+    /* ── RANKING ── */
+    .ranking-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .ranking-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.015);
+      padding: 0.75rem 0.875rem;
+      transition: border-color .15s, background .15s;
+    }
+    .ranking-item:hover { border-color: var(--border-hi); background: rgba(255,255,255,.03); }
+    .rank-num {
+      width: 1.625rem; height: 1.625rem; flex-shrink: 0;
+      border-radius: 0.375rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.6875rem; font-weight: 700; color: var(--fg-muted);
+      font-family: var(--font-mono);
+    }
+    .rank-num.top1 { background: rgba(240,180,41,.1); border-color: rgba(240,180,41,.3); color: var(--warning); }
+    .rank-num.top2 { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); color: var(--fg); }
+    .rank-num.top3 { background: rgba(224,138,92,.1); border-color: rgba(224,138,92,.25); color: #e08a5c; }
+    .rank-info { flex: 1; min-width: 0; }
+    .rank-title { font-size: 0.8125rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rank-sub   { font-size: 0.6875rem; color: var(--fg-muted); margin-top: 0.125rem; }
+    .rank-right { text-align: right; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+    .rank-days  { font-size: 0.9375rem; font-weight: 700; color: var(--danger); font-variant-numeric: tabular-nums; line-height: 1; }
+    .empty-ranking { font-size: 0.8125rem; color: var(--fg-muted); text-align: center; padding: 2rem 0; }
+
+    /* ── DETAIL HEADER ── */
+    .detail-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+    .detail-count-pill {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--fg-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2rem;
+      padding: 0.1875rem 0.625rem;
+      font-family: var(--font-mono);
+    }
+
+    /* ── PROGRESS BAR (inline em tabela) ── */
+    .progress-wrap { display: flex; align-items: center; gap: 0.5rem; }
+    .progress-bar { flex: 1; height: 3px; border-radius: 9999px; background: var(--border); overflow: hidden; min-width: 3rem; }
+    .progress-fill { height: 100%; border-radius: 9999px; background: var(--primary); transition: width .4s; }
+    .progress-fill.warn   { background: var(--warning); }
+    .progress-fill.danger { background: var(--danger); }
+
+    /* ── FOOTER ── */
+    footer { padding: 1.5rem 0 0; text-align: center; font-size: 0.6875rem; color: var(--fg-subtle); }
+    footer code { color: var(--accent); font-family: var(--font-mono); background: var(--surface); padding: 0.125rem 0.375rem; border-radius: 0.25rem; border: 1px solid var(--border); }
+    footer strong { color: var(--fg-muted); font-weight: 600; }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     LOADER
+══════════════════════════════════════ -->
+<div id="loader-overlay">
+  <div class="loader">
+    <div class="truckWrapper">
+      <div class="truckBody">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 198 93" class="trucksvg">
+          <path stroke-width="3" stroke="#252a38" fill="#5b8dee" d="M135 22.5H177.264C178.295 22.5 179.22 23.133 179.594 24.0939L192.33 56.8443C192.442 57.1332 192.5 57.4404 192.5 57.7504V89C192.5 90.3807 191.381 91.5 190 91.5H135C133.619 91.5 132.5 90.3807 132.5 89V25C132.5 23.6193 133.619 22.5 135 22.5Z"/>
+          <path stroke-width="3" stroke="#252a38" fill="#434966" d="M146 33.5H181.741C182.779 33.5 183.709 34.1415 184.078 35.112L190.538 52.112C191.16 53.748 189.951 55.5 188.201 55.5H146C144.619 55.5 143.5 54.3807 143.5 53V36C143.5 34.6193 144.619 33.5 146 33.5Z"/>
+          <path stroke-width="2" stroke="#252a38" fill="#252a38" d="M150 65C150 65.39 149.763 65.8656 149.127 66.2893C148.499 66.7083 147.573 67 146.5 67C145.427 67 144.501 66.7083 143.873 66.2893C143.237 65.8656 143 65.39 143 65C143 64.61 143.237 64.1344 143.873 63.7107C144.501 63.2917 145.427 63 146.5 63C147.573 63 148.499 63.2917 149.127 63.7107C149.763 64.1344 150 64.61 150 65Z"/>
+          <rect stroke-width="2" stroke="#252a38" fill="#f0b429" rx="1" height="7" width="5" y="63" x="187"/>
+          <rect stroke-width="2" stroke="#252a38" fill="#252a38" rx="1" height="11" width="4" y="81" x="193"/>
+          <rect stroke-width="3" stroke="#252a38" fill="#1d2230" rx="2.5" height="90" width="121" y="1.5" x="6.5"/>
+          <rect stroke-width="2" stroke="#252a38" fill="#1d2230" rx="2" height="4" width="6" y="84" x="1"/>
+          <!-- janelas do baú -->
+          <rect fill="#5b8dee" fill-opacity=".15" rx="2" height="20" width="30" y="18" x="18"/>
+          <rect fill="#5b8dee" fill-opacity=".15" rx="2" height="20" width="30" y="18" x="58"/>
+          <rect fill="#5b8dee" fill-opacity=".15" rx="2" height="20" width="25" y="18" x="98"/>
+        </svg>
+      </div>
+      <div class="truckTires">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 30 30">
+          <circle stroke-width="3" stroke="#252a38" fill="#252a38" r="13.5" cy="15" cx="15"/>
+          <circle fill="#1d2230" r="7" cy="15" cx="15"/>
+          <circle fill="#434966" r="3" cy="15" cx="15"/>
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 30 30">
+          <circle stroke-width="3" stroke="#252a38" fill="#252a38" r="13.5" cy="15" cx="15"/>
+          <circle fill="#1d2230" r="7" cy="15" cx="15"/>
+          <circle fill="#434966" r="3" cy="15" cx="15"/>
+        </svg>
+      </div>
+      <div class="road"></div>
+      <svg viewBox="0 0 453.459 453.459" xmlns="http://www.w3.org/2000/svg" class="lampPost">
+        <path d="M252.882,0c-37.781,0-68.686,29.953-70.245,67.358h-6.917v8.954c-26.109,2.163-45.463,10.011-45.463,19.366h9.993c-1.65,5.146-2.507,10.54-2.507,16.017c0,28.956,23.558,52.514,52.514,52.514c28.956,0,52.514-23.558,52.514-52.514c0-5.478-0.856-10.872-2.506-16.017h9.992c0-9.354-19.352-17.204-45.463-19.366v-8.954h-6.149C200.189,38.779,223.924,16,252.882,16c29.952,0,54.32,24.368,54.32,54.32c0,28.774-11.078,37.009-25.105,47.437c-17.444,12.968-37.216,27.667-37.216,78.884v113.914h-0.797c-5.068,0-9.174,4.108-9.174,9.177c0,2.844,1.293,5.383,3.321,7.066c-3.432,27.933-26.851,95.744-8.226,115.459v11.202h45.75v-11.202c18.625-19.715-4.794-87.527-8.227-115.459c2.029-1.683,3.322-4.223,3.322-7.066c0-5.068-4.107-9.177-9.176-9.177h-0.795V196.641c0-43.174,14.942-54.283,30.762-66.043c14.793-10.997,31.559-23.461,31.559-60.277C323.202,31.545,291.656,0,252.882,0z"/>
+      </svg>
+    </div>
+  </div>
+  <p class="loader-label"><span>LogiTrack</span> · Carregando dados…</p>
+</div>
+
+<!-- ══════════════════════════════════════
+     APP
+══════════════════════════════════════ -->
+<div id="app">
+
+<header>
+  <div class="header-inner">
+    <div class="logo-wrap">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      </div>
+      <div class="logo-text">
+        <h1>LogiTrack</h1>
+        <p>Dashboard de Monitoramento Logístico</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="header-timestamp" id="header-ts"></span>
+      <div class="live-badge">
+        <span class="pulse-dot"></span>
+        Tempo real
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- FILTROS -->
+  <div>
+    <p class="section-label">Filtros</p>
+    <div class="card">
+      <div class="filters-wrap">
+        <div class="filter-group">
+          <label>Transportadora</label>
+          <select id="sel-transp"></select>
+        </div>
+        <div class="filter-group">
+          <label>Região</label>
+          <select id="sel-regiao"></select>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+          <label>Status</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-status="todas">Todas</button>
+            <button class="toggle-btn" data-status="atrasadas">Atrasadas</button>
+            <button class="toggle-btn" data-status="no_prazo">No prazo</button>
+          </div>
+        </div>
+        <button class="clear-btn" id="btn-clear">↺ Limpar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div>
+    <p class="section-label">Visão geral</p>
+    <div class="kpi-grid">
+
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <span class="kpi-label">Entregas analisadas</span>
+          <div class="kpi-icon primary">
+            <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-hint">no recorte atual</div>
+      </div>
+
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-top">
+          <span class="kpi-label">Entregas atrasadas</span>
+          <div class="kpi-icon warning">
+            <svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-atrasadas">—</div>
+        <div class="kpi-hint" id="kpi-taxa">—</div>
+      </div>
+
+      <div class="kpi-card kpi-danger">
+        <div class="kpi-top">
+          <span class="kpi-label">Atraso médio</span>
+          <div class="kpi-icon danger">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-medio">—</div>
+        <div class="kpi-hint">dias além do prazo</div>
+      </div>
+
+      <div class="kpi-card kpi-danger">
+        <div class="kpi-top">
+          <span class="kpi-label">Pior atraso</span>
+          <div class="kpi-icon danger">
+            <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-pior">—</div>
+        <div class="kpi-hint">entrega mais crítica</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div>
+    <p class="section-label">Análise</p>
+    <div class="charts-grid">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Taxa de atraso por transportadora</h2>
+            <p>% de entregas fora do prazo</p>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-transp"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Atrasos por região</h2>
+            <p>dias acumulados de atraso</p>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-regiao"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REGIÕES + RANKING -->
+  <div>
+    <p class="section-label">Detalhamento</p>
+    <div class="two-col">
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Regiões críticas</h2>
+            <p>ordenado por dias totais em atraso</p>
+          </div>
+          <div class="card-icon accent">
+            <svg viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Região</th>
+                <th class="right">Entregas</th>
+                <th class="right">Atrasadas</th>
+                <th class="right">Taxa</th>
+                <th class="right">Dias atraso</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-regioes"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Ranking — a priorizar</h2>
+            <p>maiores atrasos primeiro</p>
+          </div>
+          <div class="card-icon danger">
+            <svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+        </div>
+        <div class="ranking-list" id="ranking-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TABELA COMPLETA -->
+  <div class="card">
+    <div class="card-header">
+      <div class="detail-meta" style="width:100%">
+        <div>
+          <h2>Entregas — detalhamento completo</h2>
+          <p>todos os registros no recorte atual</p>
+        </div>
+        <span class="detail-count-pill" id="detail-count">— reg.</span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Transportadora</th>
+            <th>Região</th>
+            <th class="right">Prazo (d)</th>
+            <th class="right">Real (d)</th>
+            <th class="right">Atraso</th>
+            <th>Progresso</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-detail"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Regra: entrega considerada <strong>atrasada</strong> quando <code>dias_reais &gt; prazo_dias</code>.
+  </footer>
+
+</main>
+</div><!-- #app -->
+
+
+<!-- ══════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════ -->
+<script>
+/* ──────────────────────────────────────
+   LOADER
+────────────────────────────────────── */
+(function () {
+  const overlay = document.getElementById('loader-overlay');
+  const app     = document.getElementById('app');
+
+  // Garante mínimo de 2 s de exibição
+  const MIN_MS = 2000;
+  const t0 = Date.now();
+
+  window.addEventListener('load', function () {
+    const elapsed = Date.now() - t0;
+    const wait = Math.max(0, MIN_MS - elapsed);
+    setTimeout(function () {
+      overlay.classList.add('hidden');
+      app.classList.add('visible');
+    }, wait);
+  });
+})();
+
+/* ──────────────────────────────────────
+   TIMESTAMP
+────────────────────────────────────── */
+(function () {
+  const el = document.getElementById('header-ts');
+  function tick() {
+    el.textContent = new Date().toLocaleTimeString('pt-BR');
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
+/* ──────────────────────────────────────
+   DADOS
+────────────────────────────────────── */
+const ENTREGAS = [
+  { id_entrega: 301, transportadora: 'RotaMax',  regiao: 'Sudeste',      prazo_dias: 3, dias_reais: 7  },
+  { id_entrega: 302, transportadora: 'ViaCargo', regiao: 'Sul',          prazo_dias: 5, dias_reais: 5  },
+  { id_entrega: 303, transportadora: 'FlashLog', regiao: 'Nordeste',     prazo_dias: 4, dias_reais: 9  },
+  { id_entrega: 304, transportadora: 'RotaMax',  regiao: 'Norte',        prazo_dias: 6, dias_reais: 4  },
+  { id_entrega: 305, transportadora: 'ViaCargo', regiao: 'Centro-Oeste', prazo_dias: 2, dias_reais: 6  },
+  { id_entrega: 306, transportadora: 'FlashLog', regiao: 'Sul',          prazo_dias: 5, dias_reais: 12 },
+  { id_entrega: 307, transportadora: 'RotaMax',  regiao: 'Sul',          prazo_dias: 6, dias_reais: 9  },
+  { id_entrega: 308, transportadora: 'ViaCargo', regiao: 'Sudeste',      prazo_dias: 3, dias_reais: 4  },
+  { id_entrega: 309, transportadora: 'FlashLog', regiao: 'Norte',        prazo_dias: 5, dias_reais: 5  },
+  { id_entrega: 310, transportadora: 'ViaCargo', regiao: 'Nordeste',     prazo_dias: 4, dias_reais: 8  },
+];
+
+const COLORS = [
+  '#5b8dee', '#38c9a3', '#f0b429', '#e05c5c', '#a78bfa',
+  '#fb923c', '#34d399', '#818cf8', '#f472b6', '#60a5fa',
+];
+
+const enriched = ENTREGAS.map(e => ({
+  ...e,
+  atraso:   e.dias_reais - e.prazo_dias,
+  atrasada: e.dias_reais > e.prazo_dias,
+}));
+
+/* ──────────────────────────────────────
+   ESTADO
+────────────────────────────────────── */
+let state = { transp: 'Todas', regiao: 'Todas', status: 'todas' };
+
+/* ──────────────────────────────────────
+   HELPERS
+────────────────────────────────────── */
+function criticidade(atraso) {
+  if (atraso <= 0) return { label: 'No prazo',    cls: 'badge-ok'      };
+  if (atraso <= 3) return { label: 'Leve',        cls: 'badge-leve'    };
+  if (atraso <= 6) return { label: 'Alto',        cls: 'badge-alto'    };
+  return                   { label: 'Crítico',    cls: 'badge-critico' };
+}
+
+function filtered() {
+  return enriched.filter(e => {
+    if (state.transp !== 'Todas' && e.transportadora !== state.transp) return false;
+    if (state.regiao !== 'Todas' && e.regiao !== state.regiao) return false;
+    if (state.status === 'atrasadas' && !e.atrasada) return false;
+    if (state.status === 'no_prazo'  &&  e.atrasada) return false;
+    return true;
+  });
+}
+
+function porTransportadora(data) {
+  const map = {};
+  data.forEach(e => {
+    if (!map[e.transportadora]) map[e.transportadora] = { transportadora: e.transportadora, total: 0, atrasadas: 0, atrasoTotal: 0 };
+    map[e.transportadora].total++;
+    if (e.atrasada) { map[e.transportadora].atrasadas++; map[e.transportadora].atrasoTotal += e.atraso; }
+  });
+  return Object.values(map)
+    .map(r => ({ ...r, taxa: r.total ? (r.atrasadas / r.total) * 100 : 0 }))
+    .sort((a, b) => b.taxa - a.taxa);
+}
+
+function porRegiao(data) {
+  const map = {};
+  data.forEach(e => {
+    if (!map[e.regiao]) map[e.regiao] = { regiao: e.regiao, total: 0, atrasadas: 0, atrasoTotal: 0 };
+    map[e.regiao].total++;
+    if (e.atrasada) { map[e.regiao].atrasadas++; map[e.regiao].atrasoTotal += e.atraso; }
+  });
+  return Object.values(map)
+    .map(r => ({ ...r, taxa: r.total ? (r.atrasadas / r.total) * 100 : 0 }))
+    .sort((a, b) => b.atrasoTotal - a.atrasoTotal);
+}
+
+/* ──────────────────────────────────────
+   CHARTS
+────────────────────────────────────── */
+const tooltipDefaults = {
+  backgroundColor: '#181c25',
+  borderColor:     '#252a38',
+  borderWidth:     1,
+  titleColor:      '#e8ecf4',
+  bodyColor:       '#6b7494',
+  padding:         12,
+  cornerRadius:    8,
+  displayColors:   false,
+};
+const gridColor = 'rgba(255,255,255,.05)';
+const tickColor = '#6b7494';
+
+let chartTransp = null, chartRegiao = null;
+
+function initCharts() {
+  chartTransp = new Chart(document.getElementById('chart-transp'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], borderRadius: 6, borderSkipped: false, borderWidth: 0 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { ...tooltipDefaults, callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(1)}%` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: tickColor, font: { size: 11, family: 'Inter, sans-serif' } }, border: { display: false } },
+        y: {
+          grid: { color: gridColor },
+          ticks: { color: tickColor, font: { size: 11 }, callback: v => v + '%' },
+          border: { display: false },
+          max: 100,
+        },
+      },
+    },
+  });
+
+  chartRegiao = new Chart(document.getElementById('chart-regiao'), {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], borderWidth: 0, hoverOffset: 6 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: tickColor, font: { size: 11, family: 'Inter, sans-serif' }, padding: 14, boxWidth: 10, boxHeight: 10, borderRadius: 3, useBorderRadius: true },
+        },
+        tooltip: { ...tooltipDefaults, callbacks: { label: ctx => ` ${ctx.parsed} dias` } },
+      },
+    },
+  });
+}
+
+function updateCharts(data) {
+  const tp = porTransportadora(data);
+  chartTransp.data.labels = tp.map(r => r.transportadora);
+  chartTransp.data.datasets[0].data = tp.map(r => r.taxa);
+  chartTransp.data.datasets[0].backgroundColor = tp.map((_, i) => COLORS[i % COLORS.length]);
+  chartTransp.update();
+
+  const rg = porRegiao(data);
+  chartRegiao.data.labels = rg.map(r => r.regiao);
+  chartRegiao.data.datasets[0].data = rg.map(r => r.atrasoTotal);
+  chartRegiao.data.datasets[0].backgroundColor = rg.map((_, i) => COLORS[i % COLORS.length]);
+  chartRegiao.update();
+}
+
+/* ──────────────────────────────────────
+   RENDER
+────────────────────────────────────── */
+function render() {
+  const data = filtered();
+
+  /* KPIs */
+  const total     = data.length;
+  const atrasadas = data.filter(e => e.atrasada).length;
+  const taxa      = total ? (atrasadas / total) * 100 : 0;
+  const medio     = atrasadas ? data.filter(e => e.atrasada).reduce((s, e) => s + e.atraso, 0) / atrasadas : 0;
+  const pior      = data.reduce((m, e) => Math.max(m, e.atraso), 0);
+
+  document.getElementById('kpi-total').textContent     = total;
+  document.getElementById('kpi-atrasadas').textContent = atrasadas;
+  document.getElementById('kpi-taxa').textContent      = `${taxa.toFixed(0)}% do total`;
+  document.getElementById('kpi-medio').textContent     = `${medio.toFixed(1)} d`;
+  document.getElementById('kpi-pior').textContent      = `${pior} d`;
+
+  /* Charts */
+  updateCharts(data);
+
+  /* Tabela regiões */
+  const rg   = porRegiao(data);
+  const tbR  = document.getElementById('tbody-regioes');
+  const maxD = rg.reduce((m, r) => Math.max(m, r.atrasoTotal), 0);
+  if (rg.length === 0) {
+    tbR.innerHTML = `<tr class="empty-row"><td colspan="5">Nenhum dado</td></tr>`;
+  } else {
+    tbR.innerHTML = rg.map(r => {
+      const taxaCls = r.taxa >= 75 ? 'text-danger bold' : r.taxa >= 50 ? 'text-warning' : '';
+      const pct = maxD ? (r.atrasoTotal / maxD) * 100 : 0;
+      const fillCls = r.taxa >= 75 ? 'danger' : r.taxa >= 50 ? 'warn' : '';
+      return `<tr>
+        <td class="bold">${r.regiao}</td>
+        <td class="right">${r.total}</td>
+        <td class="right">${r.atrasadas}</td>
+        <td class="right"><span class="${taxaCls}">${r.taxa.toFixed(0)}%</span></td>
+        <td class="right">
+          <div class="progress-wrap">
+            <div class="progress-bar"><div class="progress-fill ${fillCls}" style="width:${pct}%"></div></div>
+            <span class="bold">${r.atrasoTotal}</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  /* Ranking */
+  const ranking = [...data].filter(e => e.atrasada).sort((a, b) => b.atraso - a.atraso).slice(0, 6);
+  const rl = document.getElementById('ranking-list');
+  if (ranking.length === 0) {
+    rl.innerHTML = `<p class="empty-ranking">Nenhuma entrega atrasada no recorte atual.</p>`;
+  } else {
+    rl.innerHTML = ranking.map((e, i) => {
+      const c       = criticidade(e.atraso);
+      const numCls  = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+      return `<div class="ranking-item">
+        <div class="rank-num ${numCls}">${i + 1}</div>
+        <div class="rank-info">
+          <div class="rank-title">#${e.id_entrega} · ${e.transportadora}</div>
+          <div class="rank-sub">${e.regiao} &nbsp;·&nbsp; prazo ${e.prazo_dias} d / real ${e.dias_reais} d</div>
+        </div>
+        <div class="rank-right">
+          <div class="rank-days">+${e.atraso}d</div>
+          <span class="badge ${c.cls}">${c.label}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  /* Tabela completa */
+  document.getElementById('detail-count').textContent = `${data.length} reg.`;
+  const tbD = document.getElementById('tbody-detail');
+  tbD.innerHTML = data.map(e => {
+    const c        = criticidade(e.atraso);
+    const atrasoCls = e.atraso > 0 ? 'text-danger bold' : 'text-success';
+    const atrasoVal = e.atraso > 0 ? `+${e.atraso}` : e.atraso === 0 ? '0' : e.atraso;
+    const pct      = Math.min((e.prazo_dias / e.dias_reais) * 100, 100);
+    const fillCls  = e.atraso > 6 ? 'danger' : e.atraso > 3 ? 'warn' : '';
+    return `<tr>
+      <td class="mono">${e.id_entrega}</td>
+      <td class="bold">${e.transportadora}</td>
+      <td>${e.regiao}</td>
+      <td class="right">${e.prazo_dias}</td>
+      <td class="right">${e.dias_reais}</td>
+      <td class="right ${atrasoCls}">${atrasoVal}</td>
+      <td>
+        <div class="progress-wrap">
+          <div class="progress-bar" style="min-width:4rem"><div class="progress-fill ${fillCls}" style="width:${pct}%"></div></div>
+        </div>
+      </td>
+      <td><span class="badge ${c.cls}">${c.label}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ──────────────────────────────────────
+   SELECTS
+────────────────────────────────────── */
+function initSelects() {
+  const transportadoras = ['Todas', ...new Set(ENTREGAS.map(e => e.transportadora))];
+  const regioes         = ['Todas', ...new Set(ENTREGAS.map(e => e.regiao))];
+  const selT = document.getElementById('sel-transp');
+  const selR = document.getElementById('sel-regiao');
+
+  transportadoras.forEach(t => { const o = document.createElement('option'); o.value = o.textContent = t; selT.appendChild(o); });
+  regioes.forEach(r =>         { const o = document.createElement('option'); o.value = o.textContent = r; selR.appendChild(o); });
+
+  selT.addEventListener('change', () => { state.transp = selT.value; render(); });
+  selR.addEventListener('change', () => { state.regiao = selR.value; render(); });
+}
+
+/* ──────────────────────────────────────
+   TOGGLE
+────────────────────────────────────── */
+function initToggle() {
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.status = btn.dataset.status;
+      render();
+    });
+  });
+}
+
+/* ──────────────────────────────────────
+   CLEAR
+────────────────────────────────────── */
+document.getElementById('btn-clear').addEventListener('click', () => {
+  state = { transp: 'Todas', regiao: 'Todas', status: 'todas' };
+  document.getElementById('sel-transp').value = 'Todas';
+  document.getElementById('sel-regiao').value = 'Todas';
+  document.querySelectorAll('.toggle-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.status === 'todas');
+  });
+  render();
+});
+
+/* ──────────────────────────────────────
+   BOOT
+────────────────────────────────────── */
+initSelects();
+initToggle();
+initCharts();
+render();
+</script>
+</body>
+</html>
